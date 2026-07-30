@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5:3b-instruct"
     ollama_request_timeout_seconds: float = 120.0
 
+    # Database
+    database_url: str = "sqlite+aiosqlite:///./data/sqlite/app.db"
+
     # FastAPI backend
     api_host: str = "127.0.0.1"
     api_port: int = 8000

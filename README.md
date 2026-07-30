@@ -8,10 +8,10 @@ Built incrementally as a learning project covering the full stack of a
 production-style AI application: layered backend architecture, RAG, tool use,
 agentic reasoning, voice, and vision.
 
-## Status: Phase 1 — Core chat loop ✅
+## Status: Phase 2 — Conversation memory ✅
 
 Streamlit UI → FastAPI backend → Ollama → `qwen2.5:3b-instruct`, with
-streaming responses.
+streaming responses and SQLite-backed conversation history.
 
 ## Architecture
 
@@ -61,9 +61,9 @@ local-ai-assistant/
 │   ├── prompts/            # Prompt templates, loaded via src/utils/prompt_loader.py
 │   ├── core/                # Config (pydantic-settings) and logging setup
 │   ├── utils/                # Shared helpers
-│   ├── repositories/         # (Phase 2) persistence, abstracts SQLite away from services
-│   ├── db/                    # (Phase 2) SQLAlchemy models/session
-│   ├── memory/                 # (Phase 2) conversation memory strategies
+│   ├── repositories/         # ConversationRepository — persistence, abstracts SQLite away from services
+│   ├── db/                    # SQLAlchemy async engine/session + ORM models
+│   ├── memory/                 # (Later) context-window/summarization strategies
 │   ├── rag/                     # (Phase 3) chunking, embeddings, retrieval
 │   └── agents/                   # (Phase 5) planning, tool-use decisions
 ├── data/                    # Gitignored runtime data: uploads, chroma/, sqlite/
@@ -88,6 +88,8 @@ ollama pull qwen2.5:3b-instruct
 cp .env.example .env
 ```
 
+SQLite tables are created automatically at backend startup (`data/sqlite/app.db`) — no separate migration step needed.
+
 ## Running
 
 Two processes, two terminals:
@@ -102,27 +104,37 @@ uv run streamlit run apps/streamlit/app.py
 
 Open http://localhost:8501.
 
-## API reference (Phase 1)
+## API reference
 
-| Method | Path          | Description                          |
-|--------|---------------|---------------------------------------|
-| GET    | `/health`     | Liveness check                        |
-| POST   | `/chat`       | Full conversation → complete reply     |
-| POST   | `/chat/stream`| Full conversation → streamed reply text |
+| Method | Path                       | Description                              |
+|--------|----------------------------|--------------------------------------------|
+| GET    | `/health`                  | Liveness check                            |
+| POST   | `/chat`                    | Full conversation → complete reply         |
+| POST   | `/chat/stream`             | Full conversation → streamed reply text     |
+| GET    | `/conversations`           | List past conversations (id/title/created_at) |
+| GET    | `/conversations/{id}`      | Load one conversation with its full message history |
+| DELETE | `/conversations/{id}`      | Delete a conversation                     |
 
-Request body for both `/chat` endpoints:
+Request body for both `/chat` endpoints — the client still resends the full
+message history each turn; `conversation_id` ties it to a persisted row
+(auto-generated server-side if omitted):
 
 ```json
 {
   "messages": [{"role": "user", "content": "Hello"}],
-  "model": null
+  "model": null,
+  "conversation_id": null
 }
 ```
+
+`/chat` echoes `conversation_id` back in the JSON body; `/chat/stream`
+returns it in an `X-Conversation-Id` response header (since the body is
+just the streamed reply text).
 
 ## Roadmap
 
 - [x] Phase 1 — Core chat loop (Streamlit + FastAPI + Ollama)
-- [ ] Phase 2 — Conversation memory (SQLite)
+- [x] Phase 2 — Conversation memory (SQLite)
 - [ ] Phase 3 — RAG (ChromaDB, document upload)
 - [ ] Phase 4 — Tool calling
 - [ ] Phase 5 — Agent (planning, multi-step reasoning)

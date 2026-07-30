@@ -33,15 +33,39 @@ if "conversation" not in st.session_state:
 
 def _stream_reply(conversation: Conversation) -> Iterator[str]:
     payload = {
+        "conversation_id": conversation.id,
         "messages": [
             {"role": m.role.value, "content": m.content} for m in conversation.messages
-        ]
+        ],
     }
     with httpx.stream(
         "POST", f"{API_BASE_URL}/chat/stream", json=payload, timeout=120.0
     ) as response:
         response.raise_for_status()
         yield from response.iter_text()
+
+
+def _list_past_conversations() -> list[dict]:
+    response = httpx.get(f"{API_BASE_URL}/conversations", timeout=10.0)
+    response.raise_for_status()
+    return response.json()
+
+
+def _load_conversation(conversation_id: str) -> Conversation:
+    response = httpx.get(f"{API_BASE_URL}/conversations/{conversation_id}", timeout=10.0)
+    response.raise_for_status()
+    data = response.json()
+    return Conversation(
+        id=data["id"],
+        title=data["title"],
+        messages=[
+            Message(role=MessageRole(m["role"]), content=m["content"]) for m in data["messages"]
+        ],
+    )
+
+
+def _delete_conversation(conversation_id: str) -> None:
+    httpx.delete(f"{API_BASE_URL}/conversations/{conversation_id}", timeout=10.0)
 
 
 # --- Sidebar ---------------------------------------------------------------
@@ -55,7 +79,24 @@ with st.sidebar:
 
     st.divider()
     with st.expander("📜 Chat History", expanded=False):
-        st.caption("Coming in Phase 2 (SQLite-backed persistence).")
+        try:
+            past_conversations = _list_past_conversations()
+        except httpx.ConnectError:
+            past_conversations = []
+            st.caption("Can't reach the backend API.")
+
+        if not past_conversations:
+            st.caption("No past conversations yet.")
+        for conv in past_conversations:
+            title_col, delete_col = st.columns([5, 1])
+            if title_col.button(conv["title"], key=f"load-{conv['id']}", use_container_width=True):
+                st.session_state.conversation = _load_conversation(conv["id"])
+                st.rerun()
+            if delete_col.button("🗑", key=f"delete-{conv['id']}"):
+                _delete_conversation(conv["id"])
+                if st.session_state.conversation.id == conv["id"]:
+                    st.session_state.conversation = _new_conversation()
+                st.rerun()
     with st.expander("📄 Upload Documents", expanded=False):
         st.caption("Coming in Phase 3 (RAG with ChromaDB).")
 

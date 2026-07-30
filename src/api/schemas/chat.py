@@ -16,9 +16,11 @@ class ChatMessageIn(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessageIn] = Field(min_length=1)
     model: str | None = None
+    conversation_id: str | None = None
 
 
 class ChatResponse(BaseModel):
     reply: str
     model: str
     latency_ms: float
+    conversation_id: str

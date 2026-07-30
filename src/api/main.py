@@ -7,8 +7,10 @@ import httpx
 from fastapi import FastAPI
 
 from src.api.routes.chat import router as chat_router
+from src.api.routes.conversations import router as conversations_router
 from src.core.config import get_settings
 from src.core.logging import configure_logging
+from src.db.session import init_db
 
 
 @asynccontextmanager
@@ -20,6 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     configure_logging()
     settings = get_settings()
+    await init_db()
     app.state.http_client = httpx.AsyncClient(
         base_url=settings.ollama_base_url,
         timeout=settings.ollama_request_timeout_seconds,
@@ -30,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Local AI Assistant API", version="0.1.0", lifespan=lifespan)
 app.include_router(chat_router)
+app.include_router(conversations_router)
 
 
 @app.get("/health")
