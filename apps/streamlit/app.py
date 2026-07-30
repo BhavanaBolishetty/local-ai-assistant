@@ -68,6 +68,26 @@ def _delete_conversation(conversation_id: str) -> None:
     httpx.delete(f"{API_BASE_URL}/conversations/{conversation_id}", timeout=10.0)
 
 
+def _upload_document(uploaded_file) -> None:
+    content_type = uploaded_file.type or "application/octet-stream"
+    response = httpx.post(
+        f"{API_BASE_URL}/documents",
+        files={"file": (uploaded_file.name, uploaded_file.getvalue(), content_type)},
+        timeout=120.0,
+    )
+    response.raise_for_status()
+
+
+def _list_documents() -> list[dict]:
+    response = httpx.get(f"{API_BASE_URL}/documents", timeout=10.0)
+    response.raise_for_status()
+    return response.json()
+
+
+def _delete_document(document_id: str) -> None:
+    httpx.delete(f"{API_BASE_URL}/documents/{document_id}", timeout=10.0)
+
+
 # --- Sidebar ---------------------------------------------------------------
 with st.sidebar:
     st.title("🤖 Local AI Assistant")
@@ -98,7 +118,36 @@ with st.sidebar:
                     st.session_state.conversation = _new_conversation()
                 st.rerun()
     with st.expander("📄 Upload Documents", expanded=False):
-        st.caption("Coming in Phase 3 (RAG with ChromaDB).")
+        if "processed_uploads" not in st.session_state:
+            st.session_state.processed_uploads = set()
+
+        uploaded_files = st.file_uploader(
+            "Add .txt, .md, .pdf, or .docx files to the assistant's knowledge base",
+            type=["txt", "md", "pdf", "docx"],
+            accept_multiple_files=True,
+            key="doc_uploader",
+        )
+        for uploaded in uploaded_files or []:
+            if uploaded.file_id not in st.session_state.processed_uploads:
+                with st.spinner(f"Embedding {uploaded.name}..."):
+                    _upload_document(uploaded)
+                st.session_state.processed_uploads.add(uploaded.file_id)
+                st.rerun()
+
+        try:
+            documents = _list_documents()
+        except httpx.ConnectError:
+            documents = []
+            st.caption("Can't reach the backend API.")
+
+        if not documents:
+            st.caption("No documents uploaded yet.")
+        for doc in documents:
+            name_col, delete_col = st.columns([5, 1])
+            name_col.markdown(f"**{doc['filename']}** · {doc['chunk_count']} chunks")
+            if delete_col.button("🗑", key=f"delete-doc-{doc['id']}"):
+                _delete_document(doc["id"])
+                st.rerun()
 
 # --- Main chat area ----------------------------------------------------------
 st.header(st.session_state.conversation.title)

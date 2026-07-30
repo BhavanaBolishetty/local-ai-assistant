@@ -8,9 +8,11 @@ from fastapi import FastAPI
 
 from src.api.routes.chat import router as chat_router
 from src.api.routes.conversations import router as conversations_router
+from src.api.routes.documents import router as documents_router
 from src.core.config import get_settings
 from src.core.logging import configure_logging
 from src.db.session import init_db
+from src.rag.vector_store import VectorStore
 
 
 @asynccontextmanager
@@ -18,7 +20,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage resources that must live for the whole process lifetime.
 
     A single connection-pooled httpx.AsyncClient is created here instead of
-    per-request, then closed cleanly on shutdown.
+    per-request, then closed cleanly on shutdown. `VectorStore` similarly
+    holds a persistent Chroma connection, so it's built once here too.
     """
     configure_logging()
     settings = get_settings()
@@ -27,6 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         base_url=settings.ollama_base_url,
         timeout=settings.ollama_request_timeout_seconds,
     )
+    app.state.vector_store = VectorStore(settings.chroma_path)
     yield
     await app.state.http_client.aclose()
 
@@ -34,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Local AI Assistant API", version="0.1.0", lifespan=lifespan)
 app.include_router(chat_router)
 app.include_router(conversations_router)
+app.include_router(documents_router)
 
 
 @app.get("/health")

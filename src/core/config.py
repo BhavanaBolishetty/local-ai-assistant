@@ -18,10 +18,18 @@ class Settings(BaseSettings):
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b-instruct"
+    ollama_embedding_model: str = "nomic-embed-text"
     ollama_request_timeout_seconds: float = 120.0
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/sqlite/app.db"
+
+    # RAG
+    chroma_path: str = "./data/chroma"
+    rag_chunk_size: int = 1000
+    rag_chunk_overlap: int = 150
+    rag_top_k: int = 4
+    rag_max_distance: float = 0.5
 
     # FastAPI backend
     api_host: str = "127.0.0.1"

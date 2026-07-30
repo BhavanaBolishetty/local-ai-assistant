@@ -8,10 +8,12 @@ Built incrementally as a learning project covering the full stack of a
 production-style AI application: layered backend architecture, RAG, tool use,
 agentic reasoning, voice, and vision.
 
-## Status: Phase 2 — Conversation memory ✅
+## Status: Phase 3 — RAG ✅
 
 Streamlit UI → FastAPI backend → Ollama → `qwen2.5:3b-instruct`, with
-streaming responses and SQLite-backed conversation history.
+streaming responses, SQLite-backed conversation history, and document
+upload (ChromaDB + `nomic-embed-text`) so the assistant can answer from
+your own `.txt`/`.md` files.
 
 ## Architecture
 
@@ -64,7 +66,7 @@ local-ai-assistant/
 │   ├── repositories/         # ConversationRepository — persistence, abstracts SQLite away from services
 │   ├── db/                    # SQLAlchemy async engine/session + ORM models
 │   ├── memory/                 # (Later) context-window/summarization strategies
-│   ├── rag/                     # (Phase 3) chunking, embeddings, retrieval
+│   ├── rag/                     # chunker, VectorStore (Chroma), RagRetriever
 │   └── agents/                   # (Phase 5) planning, tool-use decisions
 ├── data/                    # Gitignored runtime data: uploads, chroma/, sqlite/
 ├── tests/
@@ -81,14 +83,17 @@ Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and
 # 1. Install dependencies
 uv sync
 
-# 2. Pull the model
+# 2. Pull the chat and embedding models
 ollama pull qwen2.5:3b-instruct
+ollama pull nomic-embed-text
 
 # 3. Copy environment config
 cp .env.example .env
 ```
 
-SQLite tables are created automatically at backend startup (`data/sqlite/app.db`) — no separate migration step needed.
+SQLite tables and the Chroma collection are created automatically at
+backend startup (`data/sqlite/app.db`, `data/chroma/`) — no separate
+migration step needed.
 
 ## Running
 
@@ -114,6 +119,9 @@ Open http://localhost:8501.
 | GET    | `/conversations`           | List past conversations (id/title/created_at) |
 | GET    | `/conversations/{id}`      | Load one conversation with its full message history |
 | DELETE | `/conversations/{id}`      | Delete a conversation                     |
+| POST   | `/documents`               | Upload a `.txt`/`.md`/`.pdf`/`.docx` file to the RAG knowledge base |
+| GET    | `/documents`                | List uploaded documents (id/filename/chunk_count) |
+| DELETE | `/documents/{id}`           | Delete a document and its chunks          |
 
 Request body for both `/chat` endpoints — the client still resends the full
 message history each turn; `conversation_id` ties it to a persisted row
@@ -131,11 +139,16 @@ message history each turn; `conversation_id` ties it to a persisted row
 returns it in an `X-Conversation-Id` response header (since the body is
 just the streamed reply text).
 
+If any documents have been uploaded, every chat turn automatically embeds
+the user's message, retrieves the most relevant chunks (cosine distance
+below a threshold), and folds them into the system prompt — no separate
+"RAG mode" to turn on.
+
 ## Roadmap
 
 - [x] Phase 1 — Core chat loop (Streamlit + FastAPI + Ollama)
 - [x] Phase 2 — Conversation memory (SQLite)
-- [ ] Phase 3 — RAG (ChromaDB, document upload)
+- [x] Phase 3 — RAG (ChromaDB, document upload)
 - [ ] Phase 4 — Tool calling
 - [ ] Phase 5 — Agent (planning, multi-step reasoning)
 - [ ] Phase 6 — Voice (Faster-Whisper, Piper)

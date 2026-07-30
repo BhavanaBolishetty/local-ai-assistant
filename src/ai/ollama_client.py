@@ -20,9 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 class OllamaClient:
-    def __init__(self, http_client: httpx.AsyncClient, default_model: str) -> None:
+    def __init__(
+        self,
+        http_client: httpx.AsyncClient,
+        default_model: str,
+        embedding_model: str = "nomic-embed-text",
+    ) -> None:
         self._http_client = http_client
         self._default_model = default_model
+        self._embedding_model = embedding_model
 
     async def chat(self, messages: list[Message], model: str | None = None) -> ChatTurnResult:
         """Send a full conversation and get back one complete reply."""
@@ -62,6 +68,14 @@ class OllamaClient:
                     yield content
                 if chunk.get("done"):
                     break
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of texts, in the same order they were given."""
+        response = await self._http_client.post(
+            "/api/embed", json={"model": self._embedding_model, "input": texts}
+        )
+        response.raise_for_status()
+        return response.json()["embeddings"]
 
     @staticmethod
     def _build_payload(messages: list[Message], model: str, *, stream: bool) -> dict:

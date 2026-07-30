@@ -1,8 +1,10 @@
 """Business logic for a chat turn.
 
-Currently a thin orchestrator over `OllamaClient`, but this is the seam
-where Phase 2 (persistence), Phase 3 (RAG context injection), and Phase 5
-(agent tool-use decisions) will plug in — without the API layer changing.
+Thin orchestrator over `OllamaClient`, `ConversationRepository` (Phase 2
+persistence), and now `RagRetriever` (Phase 3 RAG context injection) —
+the seam the earlier phases' docstrings called out, wired up without any
+change to the API layer. Phase 5 (agent tool-use decisions) will plug in
+the same way.
 """
 
 import logging
@@ -11,6 +13,7 @@ from collections.abc import AsyncIterator
 from src.ai.ollama_client import OllamaClient
 from src.models.chat import ChatTurnResult
 from src.models.message import Message, MessageRole
+from src.rag.retriever import RagRetriever
 from src.repositories.conversation_repository import ConversationRepository
 from src.utils.prompt_loader import load_prompt
 
@@ -20,9 +23,15 @@ _TITLE_MAX_LENGTH = 50
 
 
 class ChatService:
-    def __init__(self, ollama_client: OllamaClient, repository: ConversationRepository) -> None:
+    def __init__(
+        self,
+        ollama_client: OllamaClient,
+        repository: ConversationRepository,
+        rag_retriever: RagRetriever | None = None,
+    ) -> None:
         self._ollama_client = ollama_client
         self._repository = repository
+        self._rag_retriever = rag_retriever
 
     async def send_message(
         self,
@@ -30,9 +39,10 @@ class ChatService:
         conversation_id: str,
         model: str | None = None,
     ) -> ChatTurnResult:
-        await self._persist_new_user_message(conversation_history, conversation_id)
+        new_message = await self._persist_new_user_message(conversation_history, conversation_id)
+        context = await self._build_rag_context(new_message)
 
-        history = self._with_system_prompt(conversation_history)
+        history = self._with_system_prompt(conversation_history, context)
         result = await self._ollama_client.chat(history, model=model)
         await self._repository.add_message(conversation_id, result.reply)
         return result
@@ -43,9 +53,10 @@ class ChatService:
         conversation_id: str,
         model: str | None = None,
     ) -> AsyncIterator[str]:
-        await self._persist_new_user_message(conversation_history, conversation_id)
+        new_message = await self._persist_new_user_message(conversation_history, conversation_id)
+        context = await self._build_rag_context(new_message)
 
-        history = self._with_system_prompt(conversation_history)
+        history = self._with_system_prompt(conversation_history, context)
         chunks: list[str] = []
         async for chunk in self._ollama_client.stream_chat(history, model=model):
             chunks.append(chunk)
@@ -56,7 +67,7 @@ class ChatService:
 
     async def _persist_new_user_message(
         self, conversation_history: list[Message], conversation_id: str
-    ) -> None:
+    ) -> Message:
         """Get-or-create the conversation row and append the latest user
         message (the last entry in the client-supplied history) to it.
 
@@ -69,6 +80,12 @@ class ChatService:
             title = self._derive_title(new_message.content)
             await self._repository.set_title(conversation_id, title)
         await self._repository.add_message(conversation_id, new_message)
+        return new_message
+
+    async def _build_rag_context(self, new_message: Message) -> str | None:
+        if self._rag_retriever is None:
+            return None
+        return await self._rag_retriever.build_context(new_message.content)
 
     @staticmethod
     def _derive_title(content: str) -> str:
@@ -78,10 +95,16 @@ class ChatService:
         return stripped[: _TITLE_MAX_LENGTH - 3] + "..."
 
     @staticmethod
-    def _with_system_prompt(history: list[Message]) -> list[Message]:
+    def _with_system_prompt(
+        history: list[Message], rag_context: str | None = None
+    ) -> list[Message]:
         if not history:
             raise ValueError("conversation_history must contain at least one message")
         if history[0].role == MessageRole.SYSTEM:
             return history
-        system_message = Message(role=MessageRole.SYSTEM, content=load_prompt("system_prompt"))
+
+        prompt = load_prompt("system_prompt")
+        if rag_context:
+            prompt = f"{prompt}\n\nRelevant context from the user's documents:\n\n{rag_context}"
+        system_message = Message(role=MessageRole.SYSTEM, content=prompt)
         return [system_message, *history]

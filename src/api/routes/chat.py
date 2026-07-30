@@ -12,6 +12,8 @@ from src.api.schemas.chat import ChatRequest, ChatResponse
 from src.core.config import Settings, get_settings
 from src.db.session import get_db_session
 from src.models.message import Message, MessageRole
+from src.rag.retriever import RagRetriever
+from src.rag.vector_store import VectorStore
 from src.repositories.conversation_repository import ConversationRepository
 from src.services.chat_service import ChatService
 
@@ -25,12 +27,21 @@ def get_chat_service(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ChatService:
     """Build a ChatService using the shared, connection-pooled http client
-    created once at app startup (see api/main.py's lifespan)."""
+    and vector store created once at app startup (see api/main.py's lifespan)."""
     ollama_client = OllamaClient(
-        http_client=request.app.state.http_client, default_model=settings.ollama_model
+        http_client=request.app.state.http_client,
+        default_model=settings.ollama_model,
+        embedding_model=settings.ollama_embedding_model,
     )
     repository = ConversationRepository(db_session)
-    return ChatService(ollama_client, repository)
+    vector_store: VectorStore = request.app.state.vector_store
+    rag_retriever = RagRetriever(
+        ollama_client,
+        vector_store,
+        top_k=settings.rag_top_k,
+        max_distance=settings.rag_max_distance,
+    )
+    return ChatService(ollama_client, repository, rag_retriever)
 
 
 def _to_domain_messages(request: ChatRequest) -> list[Message]:
