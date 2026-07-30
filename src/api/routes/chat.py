@@ -1,6 +1,8 @@
 """Chat endpoints: the HTTP boundary for talking to the assistant."""
 
+import json
 import logging
+from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request
@@ -11,11 +13,13 @@ from src.ai.ollama_client import OllamaClient
 from src.api.schemas.chat import ChatRequest, ChatResponse
 from src.core.config import Settings, get_settings
 from src.db.session import get_db_session
+from src.models.chat import ChatStreamEvent
 from src.models.message import Message, MessageRole
 from src.rag.retriever import RagRetriever
 from src.rag.vector_store import VectorStore
 from src.repositories.conversation_repository import ConversationRepository
 from src.services.chat_service import ChatService
+from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -41,7 +45,8 @@ def get_chat_service(
         top_k=settings.rag_top_k,
         max_distance=settings.rag_max_distance,
     )
-    return ChatService(ollama_client, repository, rag_retriever)
+    tool_registry = ToolRegistry()
+    return ChatService(ollama_client, repository, rag_retriever, tool_registry)
 
 
 def _to_domain_messages(request: ChatRequest) -> list[Message]:
@@ -65,6 +70,20 @@ async def send_chat_message(
     )
 
 
+async def _to_ndjson(events: AsyncIterator[ChatStreamEvent]) -> AsyncIterator[str]:
+    """Serialize each event to one NDJSON line.
+
+    Content and tool-call events are distinguished here (rather than
+    inline in the reply text) so the client can show a "Using X..."
+    indicator without it leaking into the persisted/displayed message.
+    """
+    async for event in events:
+        if event.type == "tool_call":
+            yield json.dumps({"type": "tool_call", "tool": event.tool_name}) + "\n"
+        else:
+            yield json.dumps({"type": "content", "text": event.text}) + "\n"
+
+
 @router.post("/stream")
 async def stream_chat_message(
     request: ChatRequest,
@@ -72,8 +91,9 @@ async def stream_chat_message(
 ) -> StreamingResponse:
     conversation_id = request.conversation_id or str(uuid4())
     history = _to_domain_messages(request)
+    events = chat_service.stream_message(history, conversation_id, model=request.model)
     return StreamingResponse(
-        chat_service.stream_message(history, conversation_id, model=request.model),
-        media_type="text/plain",
+        _to_ndjson(events),
+        media_type="application/x-ndjson",
         headers={"X-Conversation-Id": conversation_id},
     )

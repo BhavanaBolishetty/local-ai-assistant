@@ -1,5 +1,6 @@
 """Streamlit chat UI — talks to the FastAPI backend, never to Ollama directly."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -31,7 +32,10 @@ if "conversation" not in st.session_state:
     st.session_state.conversation = _new_conversation()
 
 
-def _stream_reply(conversation: Conversation) -> Iterator[str]:
+def _stream_reply(conversation: Conversation) -> Iterator[tuple[str, str]]:
+    """Yields `("content", text)` or `("tool_call", tool_name)` tuples,
+    parsed from the backend's NDJSON stream (see `_to_ndjson` in
+    `src/api/routes/chat.py`)."""
     payload = {
         "conversation_id": conversation.id,
         "messages": [
@@ -42,7 +46,14 @@ def _stream_reply(conversation: Conversation) -> Iterator[str]:
         "POST", f"{API_BASE_URL}/chat/stream", json=payload, timeout=120.0
     ) as response:
         response.raise_for_status()
-        yield from response.iter_text()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            event = json.loads(line)
+            if event["type"] == "tool_call":
+                yield ("tool_call", event["tool"])
+            else:
+                yield ("content", event["text"])
 
 
 def _list_past_conversations() -> list[dict]:
@@ -172,9 +183,12 @@ if prompt:
         placeholder.markdown("Thinking...")
         full_reply = ""
         try:
-            for chunk in _stream_reply(conversation):
-                full_reply += chunk
-                placeholder.markdown(full_reply + "▌")
+            for kind, value in _stream_reply(conversation):
+                if kind == "tool_call":
+                    placeholder.markdown(f"🔧 Using {value}...")
+                else:
+                    full_reply += value
+                    placeholder.markdown(full_reply + "▌")
             placeholder.markdown(full_reply)
         except httpx.ConnectError:
             full_reply = ""

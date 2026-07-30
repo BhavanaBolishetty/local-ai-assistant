@@ -15,6 +15,14 @@ class MessageRole(StrEnum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
+    TOOL = "tool"
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,3 +30,5 @@ class Message:
     role: MessageRole
     content: str
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    tool_calls: list[ToolCall] | None = None
+    tool_call_id: str | None = None
