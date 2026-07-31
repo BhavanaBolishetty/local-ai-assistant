@@ -8,7 +8,7 @@ from datetime import datetime
 from src.tools.base import Tool
 
 
-def _current_datetime(_arguments: dict) -> str:
+async def _current_datetime(_arguments: dict) -> str:
     return datetime.now().strftime("%A, %B %d, %Y, %H:%M:%S")
 
 

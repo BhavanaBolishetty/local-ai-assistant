@@ -32,9 +32,9 @@ if "conversation" not in st.session_state:
     st.session_state.conversation = _new_conversation()
 
 
-def _stream_reply(conversation: Conversation) -> Iterator[tuple[str, str]]:
-    """Yields `("content", text)` or `("tool_call", tool_name)` tuples,
-    parsed from the backend's NDJSON stream (see `_to_ndjson` in
+def _stream_reply(conversation: Conversation) -> Iterator[tuple]:
+    """Yields `("content", text)` or `("step", tool_name, arguments, result)`
+    tuples, parsed from the backend's NDJSON stream (see `_to_ndjson` in
     `src/api/routes/chat.py`)."""
     payload = {
         "conversation_id": conversation.id,
@@ -50,8 +50,8 @@ def _stream_reply(conversation: Conversation) -> Iterator[tuple[str, str]]:
             if not line:
                 continue
             event = json.loads(line)
-            if event["type"] == "tool_call":
-                yield ("tool_call", event["tool"])
+            if event["type"] == "step":
+                yield ("step", event["tool_name"], event["arguments"], event["result"])
             else:
                 yield ("content", event["text"])
 
@@ -182,13 +182,21 @@ if prompt:
         placeholder = st.empty()
         placeholder.markdown("Thinking...")
         full_reply = ""
+        status_box = None
         try:
-            for kind, value in _stream_reply(conversation):
-                if kind == "tool_call":
-                    placeholder.markdown(f"🔧 Using {value}...")
+            for item in _stream_reply(conversation):
+                if item[0] == "step":
+                    _, tool_name, arguments, result = item
+                    if status_box is None:
+                        status_box = st.status("🤖 Working...", expanded=True)
+                    args_str = ", ".join(f"{k}={v!r}" for k, v in arguments.items())
+                    status_box.write(f"🔧 **{tool_name}**({args_str}) → {result}")
                 else:
-                    full_reply += value
+                    _, text = item
+                    full_reply += text
                     placeholder.markdown(full_reply + "▌")
+            if status_box is not None:
+                status_box.update(label="Done", state="complete", expanded=False)
             placeholder.markdown(full_reply)
         except httpx.ConnectError:
             full_reply = ""

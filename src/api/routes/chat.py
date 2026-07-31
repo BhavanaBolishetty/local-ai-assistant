@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.agents.runner import AgentRunner
 from src.ai.ollama_client import OllamaClient
-from src.api.schemas.chat import ChatRequest, ChatResponse
+from src.api.schemas.chat import AgentStepOut, ChatRequest, ChatResponse
 from src.core.config import Settings, get_settings
 from src.db.session import get_db_session
 from src.models.chat import ChatStreamEvent
@@ -19,6 +20,9 @@ from src.rag.retriever import RagRetriever
 from src.rag.vector_store import VectorStore
 from src.repositories.conversation_repository import ConversationRepository
 from src.services.chat_service import ChatService
+from src.tools.calculator import calculator_tool
+from src.tools.datetime_tool import current_datetime_tool
+from src.tools.document_search import build_search_documents_tool
 from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -45,8 +49,11 @@ def get_chat_service(
         top_k=settings.rag_top_k,
         max_distance=settings.rag_max_distance,
     )
-    tool_registry = ToolRegistry()
-    return ChatService(ollama_client, repository, rag_retriever, tool_registry)
+    tool_registry = ToolRegistry(
+        tools=[calculator_tool, current_datetime_tool, build_search_documents_tool(rag_retriever)]
+    )
+    agent_runner = AgentRunner(ollama_client, tool_registry)
+    return ChatService(ollama_client, repository, rag_retriever, agent_runner)
 
 
 def _to_domain_messages(request: ChatRequest) -> list[Message]:
@@ -67,21 +74,31 @@ async def send_chat_message(
         model=result.model,
         latency_ms=result.latency_ms,
         conversation_id=conversation_id,
+        steps=[
+            AgentStepOut(tool_name=s.tool_name, arguments=s.arguments, result=s.result)
+            for s in result.steps
+        ],
     )
 
 
 async def _to_ndjson(events: AsyncIterator[ChatStreamEvent]) -> AsyncIterator[str]:
     """Serialize each event to one NDJSON line.
 
-    Content and tool-call events are distinguished here (rather than
-    inline in the reply text) so the client can show a "Using X..."
-    indicator without it leaking into the persisted/displayed message.
+    Content and step events are distinguished here (rather than inline in
+    the reply text) so the client can show a step trace without it
+    leaking into the persisted/displayed message.
     """
     async for event in events:
-        if event.type == "tool_call":
-            yield json.dumps({"type": "tool_call", "tool": event.tool_name}) + "\n"
+        if event.type == "step" and event.step is not None:
+            payload = {
+                "type": "step",
+                "tool_name": event.step.tool_name,
+                "arguments": event.step.arguments,
+                "result": event.step.result,
+            }
         else:
-            yield json.dumps({"type": "content", "text": event.text}) + "\n"
+            payload = {"type": "content", "text": event.text}
+        yield json.dumps(payload) + "\n"
 
 
 @router.post("/stream")

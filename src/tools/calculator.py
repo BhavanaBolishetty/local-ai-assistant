@@ -34,7 +34,7 @@ def _eval_node(node: ast.AST) -> float:
     raise ValueError(f"unsupported expression element: {ast.dump(node)}")
 
 
-def _calculate(arguments: dict) -> str:
+async def _calculate(arguments: dict) -> str:
     expression = arguments.get("expression", "")
     try:
         tree = ast.parse(expression, mode="eval")

@@ -4,7 +4,7 @@ from src.tools.base import Tool
 from src.tools.registry import ToolRegistry
 
 
-def _boom(_arguments: dict) -> str:
+async def _boom(_arguments: dict) -> str:
     raise RuntimeError("kaboom")
 
 
@@ -18,21 +18,21 @@ def test_to_ollama_schema_shape() -> None:
     assert all("parameters" in entry["function"] for entry in schema)
 
 
-def test_execute_dispatches_to_the_right_tool() -> None:
+async def test_execute_dispatches_to_the_right_tool() -> None:
     registry = ToolRegistry()
-    assert registry.execute("calculator", {"expression": "2 + 2"}) == "4"
+    assert await registry.execute("calculator", {"expression": "2 + 2"}) == "4"
 
 
-def test_execute_unknown_tool_returns_error_string() -> None:
+async def test_execute_unknown_tool_returns_error_string() -> None:
     registry = ToolRegistry()
-    result = registry.execute("does_not_exist", {})
+    result = await registry.execute("does_not_exist", {})
     assert result == "Error: unknown tool 'does_not_exist'"
 
 
-def test_execute_swallows_tool_exceptions() -> None:
+async def test_execute_swallows_tool_exceptions() -> None:
     broken_tool = Tool(name="broken", description="always fails", parameters={}, execute=_boom)
     registry = ToolRegistry(tools=[broken_tool])
 
-    result = registry.execute("broken", {})
+    result = await registry.execute("broken", {})
 
     assert result.startswith("Error: tool 'broken' failed")

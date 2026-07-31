@@ -1,6 +1,6 @@
 """Shared shape for a callable tool the model can invoke."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 
@@ -9,4 +9,4 @@ class Tool:
     name: str
     description: str
     parameters: dict  # JSON Schema for the function's arguments (Ollama's `tools` format)
-    execute: Callable[[dict], str]
+    execute: Callable[[dict], Awaitable[str]]

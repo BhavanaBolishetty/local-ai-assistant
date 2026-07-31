@@ -28,12 +28,12 @@ class ToolRegistry:
             for tool in self._tools.values()
         ]
 
-    def execute(self, name: str, arguments: dict) -> str:
+    async def execute(self, name: str, arguments: dict) -> str:
         tool = self._tools.get(name)
         if tool is None:
             return f"Error: unknown tool '{name}'"
         try:
-            return tool.execute(arguments)
+            return await tool.execute(arguments)
         except Exception as exc:
             logger.exception("Tool %s failed", name)
             return f"Error: tool '{name}' failed ({exc})"

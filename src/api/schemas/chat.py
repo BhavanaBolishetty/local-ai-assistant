@@ -19,8 +19,15 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class AgentStepOut(BaseModel):
+    tool_name: str
+    arguments: dict
+    result: str
+
+
 class ChatResponse(BaseModel):
     reply: str
     model: str
     latency_ms: float
     conversation_id: str
+    steps: list[AgentStepOut] = []
