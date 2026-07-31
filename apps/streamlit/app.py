@@ -99,6 +99,23 @@ def _delete_document(document_id: str) -> None:
     httpx.delete(f"{API_BASE_URL}/documents/{document_id}", timeout=10.0)
 
 
+def _transcribe_audio(audio_value) -> str:
+    response = httpx.post(
+        f"{API_BASE_URL}/voice/transcribe",
+        files={"file": ("recording.wav", audio_value.getvalue(), "audio/wav")},
+        timeout=60.0,
+    )
+    response.raise_for_status()
+    return response.json()["text"]
+
+
+def _render_play_button(text: str, key: str) -> None:
+    if st.button("🔊 Play", key=key):
+        response = httpx.post(f"{API_BASE_URL}/voice/speak", json={"text": text}, timeout=60.0)
+        response.raise_for_status()
+        st.audio(response.content, format="audio/wav", autoplay=True)
+
+
 # --- Sidebar ---------------------------------------------------------------
 with st.sidebar:
     st.title("🤖 Local AI Assistant")
@@ -163,13 +180,24 @@ with st.sidebar:
 # --- Main chat area ----------------------------------------------------------
 st.header(st.session_state.conversation.title)
 
-for message in st.session_state.conversation.messages:
+for idx, message in enumerate(st.session_state.conversation.messages):
     if message.role == MessageRole.SYSTEM:
         continue
     with st.chat_message(message.role.value):
         st.markdown(message.content)
+        if message.role == MessageRole.ASSISTANT:
+            _render_play_button(message.content, key=f"play-history-{idx}")
 
 prompt = st.chat_input("Message the assistant...")
+
+if "processed_voice_inputs" not in st.session_state:
+    st.session_state.processed_voice_inputs = set()
+
+audio_value = st.audio_input("🎙️ Or record a voice message")
+if audio_value is not None and audio_value.file_id not in st.session_state.processed_voice_inputs:
+    st.session_state.processed_voice_inputs.add(audio_value.file_id)
+    with st.spinner("Transcribing..."):
+        prompt = _transcribe_audio(audio_value)
 
 if prompt:
     conversation: Conversation = st.session_state.conversation
@@ -207,3 +235,8 @@ if prompt:
 
     if full_reply:
         conversation.add_message(Message(role=MessageRole.ASSISTANT, content=full_reply))
+        # Rerun so the history loop above renders this message (and its Play
+        # button) as a normal, stable widget — a button created in this
+        # branch would vanish next run (prompt/audio_value are now empty),
+        # so its own click could never be detected.
+        st.rerun()

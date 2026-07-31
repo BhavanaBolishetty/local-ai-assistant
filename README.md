@@ -8,14 +8,14 @@ Built incrementally as a learning project covering the full stack of a
 production-style AI application: layered backend architecture, RAG, tool use,
 agentic reasoning, voice, and vision.
 
-## Status: Phase 5 — Agent ✅
+## Status: Phase 6 — Voice ✅
 
 Streamlit UI → FastAPI backend → Ollama → `qwen2.5:3b-instruct`, with
 streaming responses, SQLite-backed conversation history, document upload
-(ChromaDB + `nomic-embed-text`) for RAG, and an agent (`src/agents/AgentRunner`)
-that can chain up to 8 tool calls per turn — calculator, current
-date/time, and an explicit document search — showing its full
-step-by-step reasoning trace rather than just a final answer.
+(ChromaDB + `nomic-embed-text`) for RAG, an agent (`src/agents/AgentRunner`)
+that can chain up to 8 tool calls per turn with a visible step trace, and
+voice — record a message instead of typing (Faster-Whisper) and play
+back any reply as speech (Piper), both fully local.
 
 ## Architecture
 
@@ -70,8 +70,9 @@ local-ai-assistant/
 │   ├── memory/                 # (Later) context-window/summarization strategies
 │   ├── rag/                     # chunker, VectorStore (Chroma), RagRetriever
 │   ├── tools/                     # Tool (calculator, get_current_datetime, search_documents) + ToolRegistry
-│   └── agents/                   # AgentRunner — the bounded, multi-step tool-calling loop
-├── data/                    # Gitignored runtime data: uploads, chroma/, sqlite/
+│   ├── agents/                   # AgentRunner — the bounded, multi-step tool-calling loop
+│   └── voice/                     # TranscriptionService (Faster-Whisper), SynthesisService (Piper)
+├── data/                    # Gitignored runtime data: uploads, chroma/, sqlite/, whisper/, voices/
 ├── tests/
 ├── .env.example
 └── pyproject.toml
@@ -96,7 +97,10 @@ cp .env.example .env
 
 SQLite tables and the Chroma collection are created automatically at
 backend startup (`data/sqlite/app.db`, `data/chroma/`) — no separate
-migration step needed.
+migration step needed. The Whisper speech-to-text model and the Piper
+voice are likewise fetched automatically on first backend startup
+(`data/whisper/`, `data/voices/`) — the very first `uvicorn` launch will
+take a bit longer while those download.
 
 ## Running
 
@@ -125,6 +129,8 @@ Open http://localhost:8501.
 | POST   | `/documents`               | Upload a `.txt`/`.md`/`.pdf`/`.docx` file to the RAG knowledge base |
 | GET    | `/documents`                | List uploaded documents (id/filename/chunk_count) |
 | DELETE | `/documents/{id}`           | Delete a document and its chunks          |
+| POST   | `/voice/transcribe`         | Audio file → `{"text": "..."}` (speech-to-text) |
+| POST   | `/voice/speak`              | `{"text": "..."}` → raw WAV bytes (text-to-speech) |
 
 Request body for both `/chat` endpoints — the client still resends the full
 message history each turn; `conversation_id` ties it to a persisted row
@@ -156,6 +162,13 @@ the documents, then computing something from what it found, then
 checking the date — with each step exposed in the trace. True token
 streaming is preserved for ordinary questions that need no tool at all.
 
+Voice is two independent, opt-in additions rather than a separate mode:
+a 🎙️ recorder below the chat box transcribes speech into the same
+`prompt` a typed message would produce (so it flows through the exact
+same send/RAG/agent pipeline above), and every assistant reply gets a
+"🔊 Play" button that synthesizes and plays *that* message on demand —
+nothing is auto-transcribed or auto-spoken.
+
 ## Roadmap
 
 - [x] Phase 1 — Core chat loop (Streamlit + FastAPI + Ollama)
@@ -163,6 +176,6 @@ streaming is preserved for ordinary questions that need no tool at all.
 - [x] Phase 3 — RAG (ChromaDB, document upload)
 - [x] Phase 4 — Tool calling
 - [x] Phase 5 — Agent (planning, multi-step reasoning)
-- [ ] Phase 6 — Voice (Faster-Whisper, Piper)
+- [x] Phase 6 — Voice (Faster-Whisper, Piper)
 - [ ] Phase 7 — Vision
 - [ ] Phase 8 — Deployment (Docker, logging, testing)

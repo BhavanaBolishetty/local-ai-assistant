@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     rag_top_k: int = 4
     rag_max_distance: float = 0.5
 
+    # Voice
+    whisper_model_size: str = "base"
+    whisper_download_root: str = "./data/whisper"
+    piper_voice: str = "en_US-lessac-medium"
+    piper_voices_dir: str = "./data/voices"
+
     # FastAPI backend
     api_host: str = "127.0.0.1"
     api_port: int = 8000

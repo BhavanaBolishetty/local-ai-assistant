@@ -17,6 +17,10 @@ data/chroma/*
 !data/chroma/.gitkeep
 data/sqlite/*
 !data/sqlite/.gitkeep
+data/whisper/*
+!data/whisper/.gitkeep
+data/voices/*
+!data/voices/.gitkeep
 
 # IDE
 .vscode/
