@@ -8,14 +8,14 @@ Built incrementally as a learning project covering the full stack of a
 production-style AI application: layered backend architecture, RAG, tool use,
 agentic reasoning, voice, and vision.
 
-## Status: Phase 6 — Voice ✅
+## Status: Phase 7 — Vision ✅
 
 Streamlit UI → FastAPI backend → Ollama → `qwen2.5:3b-instruct`, with
 streaming responses, SQLite-backed conversation history, document upload
 (ChromaDB + `nomic-embed-text`) for RAG, an agent (`src/agents/AgentRunner`)
-that can chain up to 8 tool calls per turn with a visible step trace, and
-voice — record a message instead of typing (Faster-Whisper) and play
-back any reply as speech (Piper), both fully local.
+that can chain up to 8 tool calls per turn with a visible step trace,
+voice (Faster-Whisper speech-to-text, Piper text-to-speech), and vision
+— attach an image and ask about it (`moondream`), fully local.
 
 ## Architecture
 
@@ -59,7 +59,7 @@ local-ai-assistant/
 ├── apps/streamlit/       # Streamlit frontend (talks to FastAPI only)
 ├── src/
 │   ├── api/               # FastAPI app, routes, request/response schemas
-│   ├── services/          # Business logic / orchestration (ChatService)
+│   ├── services/          # Business logic / orchestration (ChatService, DocumentService, VisionService)
 │   ├── ai/                # Model client(s) — currently OllamaClient
 │   ├── models/             # Framework-agnostic domain models (Message, Conversation)
 │   ├── prompts/            # Prompt templates, loaded via src/utils/prompt_loader.py
@@ -87,9 +87,10 @@ Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and
 # 1. Install dependencies
 uv sync
 
-# 2. Pull the chat and embedding models
+# 2. Pull the chat, embedding, and vision models
 ollama pull qwen2.5:3b-instruct
 ollama pull nomic-embed-text
+ollama pull moondream
 
 # 3. Copy environment config
 cp .env.example .env
@@ -131,6 +132,7 @@ Open http://localhost:8501.
 | DELETE | `/documents/{id}`           | Delete a document and its chunks          |
 | POST   | `/voice/transcribe`         | Audio file → `{"text": "..."}` (speech-to-text) |
 | POST   | `/voice/speak`              | `{"text": "..."}` → raw WAV bytes (text-to-speech) |
+| POST   | `/vision/ask`               | Image + text (multipart) → streamed answer about the image |
 
 Request body for both `/chat` endpoints — the client still resends the full
 message history each turn; `conversation_id` ties it to a persisted row
@@ -169,6 +171,15 @@ same send/RAG/agent pipeline above), and every assistant reply gets a
 "🔊 Play" button that synthesizes and plays *that* message on demand —
 nothing is auto-transcribed or auto-spoken.
 
+Vision works differently on purpose: `moondream` (the vision model) has
+no tool-calling support, so an image-attached turn is a separate,
+simpler one-shot path (`VisionService`) rather than going through
+`ChatService`/`AgentRunner`/`RagRetriever` — no RAG, no tools, just the
+image and your question. The image itself is never persisted or resent;
+follow-up questions in the same conversation go straight back through
+the normal chat pipeline above, exactly as if no image had ever been
+attached.
+
 ## Roadmap
 
 - [x] Phase 1 — Core chat loop (Streamlit + FastAPI + Ollama)
@@ -177,5 +188,5 @@ nothing is auto-transcribed or auto-spoken.
 - [x] Phase 4 — Tool calling
 - [x] Phase 5 — Agent (planning, multi-step reasoning)
 - [x] Phase 6 — Voice (Faster-Whisper, Piper)
-- [ ] Phase 7 — Vision
+- [x] Phase 7 — Vision
 - [ ] Phase 8 — Deployment (Docker, logging, testing)

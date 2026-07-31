@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from src.api.routes.chat import router as chat_router
 from src.api.routes.conversations import router as conversations_router
 from src.api.routes.documents import router as documents_router
+from src.api.routes.vision import router as vision_router
 from src.api.routes.voice import router as voice_router
 from src.core.config import get_settings
 from src.core.logging import configure_logging
@@ -50,6 +51,7 @@ app.include_router(chat_router)
 app.include_router(conversations_router)
 app.include_router(documents_router)
 app.include_router(voice_router)
+app.include_router(vision_router)
 
 
 @app.get("/health")

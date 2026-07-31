@@ -35,10 +35,13 @@ class OllamaClient:
         messages: list[Message],
         model: str | None = None,
         tools: list[dict] | None = None,
+        images: list[str] | None = None,
     ) -> ChatTurnResult:
         """Send a full conversation and get back one complete reply."""
         resolved_model = model or self._default_model
-        payload = self._build_payload(messages, resolved_model, stream=False, tools=tools)
+        payload = self._build_payload(
+            messages, resolved_model, stream=False, tools=tools, images=images
+        )
 
         started = time.perf_counter()
         response = await self._http_client.post("/api/chat", json=payload)
@@ -60,6 +63,7 @@ class OllamaClient:
         messages: list[Message],
         model: str | None = None,
         tools: list[dict] | None = None,
+        images: list[str] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Send a full conversation and yield chunks as they're generated.
 
@@ -71,7 +75,9 @@ class OllamaClient:
         common case's streaming behavior at all.
         """
         resolved_model = model or self._default_model
-        payload = self._build_payload(messages, resolved_model, stream=True, tools=tools)
+        payload = self._build_payload(
+            messages, resolved_model, stream=True, tools=tools, images=images
+        )
 
         async with self._http_client.stream("POST", "/api/chat", json=payload) as response:
             response.raise_for_status()
@@ -97,13 +103,17 @@ class OllamaClient:
 
     @staticmethod
     def _build_payload(
-        messages: list[Message], model: str, *, stream: bool, tools: list[dict] | None = None
+        messages: list[Message],
+        model: str,
+        *,
+        stream: bool,
+        tools: list[dict] | None = None,
+        images: list[str] | None = None,
     ) -> dict:
-        payload: dict = {
-            "model": model,
-            "messages": [OllamaClient._serialize_message(m) for m in messages],
-            "stream": stream,
-        }
+        wire_messages = [OllamaClient._serialize_message(m) for m in messages]
+        if images and wire_messages:
+            wire_messages[-1]["images"] = images
+        payload: dict = {"model": model, "messages": wire_messages, "stream": stream}
         if tools:
             payload["tools"] = tools
         return payload

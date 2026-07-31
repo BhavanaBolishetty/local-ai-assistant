@@ -116,6 +116,16 @@ def _render_play_button(text: str, key: str) -> None:
         st.audio(response.content, format="audio/wav", autoplay=True)
 
 
+def _ask_vision(conversation: Conversation, image_file, text: str) -> Iterator[str]:
+    files = {"image": (image_file.name, image_file.getvalue(), image_file.type or "image/png")}
+    data = {"text": text, "conversation_id": conversation.id}
+    with httpx.stream(
+        "POST", f"{API_BASE_URL}/vision/ask", files=files, data=data, timeout=120.0
+    ) as response:
+        response.raise_for_status()
+        yield from response.iter_text()
+
+
 # --- Sidebar ---------------------------------------------------------------
 with st.sidebar:
     st.title("🤖 Local AI Assistant")
@@ -199,9 +209,25 @@ if audio_value is not None and audio_value.file_id not in st.session_state.proce
     with st.spinner("Transcribing..."):
         prompt = _transcribe_audio(audio_value)
 
+if "processed_images" not in st.session_state:
+    st.session_state.processed_images = set()
+
+uploaded_image = st.file_uploader(
+    "🖼️ Or attach an image to ask about",
+    type=["png", "jpg", "jpeg", "webp"],
+    key="image_uploader",
+)
+
 if prompt:
     conversation: Conversation = st.session_state.conversation
     conversation.add_message(Message(role=MessageRole.USER, content=prompt))
+
+    use_vision = (
+        uploaded_image is not None
+        and uploaded_image.file_id not in st.session_state.processed_images
+    )
+    if use_vision:
+        st.session_state.processed_images.add(uploaded_image.file_id)
 
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -212,17 +238,22 @@ if prompt:
         full_reply = ""
         status_box = None
         try:
-            for item in _stream_reply(conversation):
-                if item[0] == "step":
-                    _, tool_name, arguments, result = item
-                    if status_box is None:
-                        status_box = st.status("🤖 Working...", expanded=True)
-                    args_str = ", ".join(f"{k}={v!r}" for k, v in arguments.items())
-                    status_box.write(f"🔧 **{tool_name}**({args_str}) → {result}")
-                else:
-                    _, text = item
+            if use_vision:
+                for text in _ask_vision(conversation, uploaded_image, prompt):
                     full_reply += text
                     placeholder.markdown(full_reply + "▌")
+            else:
+                for item in _stream_reply(conversation):
+                    if item[0] == "step":
+                        _, tool_name, arguments, result = item
+                        if status_box is None:
+                            status_box = st.status("🤖 Working...", expanded=True)
+                        args_str = ", ".join(f"{k}={v!r}" for k, v in arguments.items())
+                        status_box.write(f"🔧 **{tool_name}**({args_str}) → {result}")
+                    else:
+                        _, text = item
+                        full_reply += text
+                        placeholder.markdown(full_reply + "▌")
             if status_box is not None:
                 status_box.update(label="Done", state="complete", expanded=False)
             placeholder.markdown(full_reply)

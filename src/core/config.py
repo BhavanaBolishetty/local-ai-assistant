@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b-instruct"
     ollama_embedding_model: str = "nomic-embed-text"
+    ollama_vision_model: str = "moondream"
     ollama_request_timeout_seconds: float = 120.0
 
     # Database

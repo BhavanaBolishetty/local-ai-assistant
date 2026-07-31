@@ -17,10 +17,9 @@ from src.models.message import Message, MessageRole
 from src.rag.retriever import RagRetriever
 from src.repositories.conversation_repository import ConversationRepository
 from src.utils.prompt_loader import load_prompt
+from src.utils.text import derive_title
 
 logger = logging.getLogger(__name__)
-
-_TITLE_MAX_LENGTH = 50
 
 
 class ChatService:
@@ -91,8 +90,7 @@ class ChatService:
         conversation = await self._repository.get_or_create(conversation_id)
         new_message = conversation_history[-1]
         if not conversation.messages:
-            title = self._derive_title(new_message.content)
-            await self._repository.set_title(conversation_id, title)
+            await self._repository.set_title(conversation_id, derive_title(new_message.content))
         await self._repository.add_message(conversation_id, new_message)
         return new_message
 
@@ -100,13 +98,6 @@ class ChatService:
         if self._rag_retriever is None:
             return None
         return await self._rag_retriever.build_context(new_message.content)
-
-    @staticmethod
-    def _derive_title(content: str) -> str:
-        stripped = content.strip()
-        if len(stripped) <= _TITLE_MAX_LENGTH:
-            return stripped
-        return stripped[: _TITLE_MAX_LENGTH - 3] + "..."
 
     @staticmethod
     def _with_system_prompt(
