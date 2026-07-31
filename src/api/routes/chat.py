@@ -21,6 +21,7 @@ from src.rag.vector_store import VectorStore
 from src.repositories.conversation_repository import ConversationRepository
 from src.services.chat_service import ChatService
 from src.tools.calculator import calculator_tool
+from src.tools.date_duration import date_duration_tool
 from src.tools.datetime_tool import current_datetime_tool
 from src.tools.document_search import build_search_documents_tool
 from src.tools.registry import ToolRegistry
@@ -50,7 +51,12 @@ def get_chat_service(
         max_distance=settings.rag_max_distance,
     )
     tool_registry = ToolRegistry(
-        tools=[calculator_tool, current_datetime_tool, build_search_documents_tool(rag_retriever)]
+        tools=[
+            calculator_tool,
+            current_datetime_tool,
+            date_duration_tool,
+            build_search_documents_tool(rag_retriever),
+        ]
     )
     agent_runner = AgentRunner(ollama_client, tool_registry)
     return ChatService(ollama_client, repository, rag_retriever, agent_runner)

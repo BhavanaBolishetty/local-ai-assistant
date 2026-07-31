@@ -1,0 +1,8 @@
+[client]
+# Hides the hamburger menu / Deploy button and disables its keyboard
+# shortcuts (e.g. "c" for Clear cache, "r" for Rerun) — those shortcuts
+# don't check for modifier keys, so a plain Ctrl+C to copy selected chat
+# text was also triggering "Clear caches". The always-visible Stop
+# control (used to interrupt a streaming reply) is a separate status
+# widget and isn't affected by this setting.
+toolbarMode = "viewer"

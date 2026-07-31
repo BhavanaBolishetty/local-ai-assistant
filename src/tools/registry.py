@@ -4,11 +4,12 @@ import logging
 
 from src.tools.base import Tool
 from src.tools.calculator import calculator_tool
+from src.tools.date_duration import date_duration_tool
 from src.tools.datetime_tool import current_datetime_tool
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TOOLS = [calculator_tool, current_datetime_tool]
+DEFAULT_TOOLS = [calculator_tool, current_datetime_tool, date_duration_tool]
 
 
 class ToolRegistry:

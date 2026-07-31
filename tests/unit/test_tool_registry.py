@@ -13,7 +13,7 @@ def test_to_ollama_schema_shape() -> None:
     schema = registry.to_ollama_schema()
 
     names = {entry["function"]["name"] for entry in schema}
-    assert names == {"calculator", "get_current_datetime"}
+    assert names == {"calculator", "get_current_datetime", "calculate_date_duration"}
     assert all(entry["type"] == "function" for entry in schema)
     assert all("parameters" in entry["function"] for entry in schema)
 

@@ -99,6 +99,15 @@ def _delete_document(document_id: str) -> None:
     httpx.delete(f"{API_BASE_URL}/documents/{document_id}", timeout=10.0)
 
 
+def _error_detail(exc: httpx.HTTPStatusError) -> str:
+    """FastAPI error responses are `{"detail": "..."}`; fall back to raw
+    text if the backend returned something else (e.g. a proxy's HTML page)."""
+    try:
+        return exc.response.json().get("detail", exc.response.text)
+    except ValueError:
+        return exc.response.text
+
+
 def _transcribe_audio(audio_value) -> str:
     response = httpx.post(
         f"{API_BASE_URL}/voice/transcribe",
@@ -111,9 +120,16 @@ def _transcribe_audio(audio_value) -> str:
 
 def _render_play_button(text: str, key: str) -> None:
     if st.button("🔊 Play", key=key):
-        response = httpx.post(f"{API_BASE_URL}/voice/speak", json={"text": text}, timeout=60.0)
-        response.raise_for_status()
-        st.audio(response.content, format="audio/wav", autoplay=True)
+        try:
+            response = httpx.post(
+                f"{API_BASE_URL}/voice/speak", json={"text": text}, timeout=60.0
+            )
+            response.raise_for_status()
+            st.audio(response.content, format="audio/wav", autoplay=True)
+        except httpx.HTTPStatusError as exc:
+            st.error(f"Couldn't generate speech: {_error_detail(exc)}")
+        except httpx.ConnectError:
+            st.error("Can't reach the backend API.")
 
 
 def _ask_vision(conversation: Conversation, image_file, text: str) -> Iterator[str]:
@@ -167,10 +183,19 @@ with st.sidebar:
         )
         for uploaded in uploaded_files or []:
             if uploaded.file_id not in st.session_state.processed_uploads:
-                with st.spinner(f"Embedding {uploaded.name}..."):
-                    _upload_document(uploaded)
+                # Mark as seen before attempting the upload, win or lose —
+                # otherwise a failed file would just retry (and re-fail)
+                # forever on every rerun.
                 st.session_state.processed_uploads.add(uploaded.file_id)
-                st.rerun()
+                try:
+                    with st.spinner(f"Embedding {uploaded.name}..."):
+                        _upload_document(uploaded)
+                except httpx.HTTPStatusError as exc:
+                    st.error(f"Couldn't add {uploaded.name}: {_error_detail(exc)}")
+                except httpx.ConnectError:
+                    st.error("Can't reach the backend API.")
+                else:
+                    st.rerun()
 
         try:
             documents = _list_documents()
@@ -178,6 +203,12 @@ with st.sidebar:
             documents = []
             st.caption("Can't reach the backend API.")
 
+        st.caption(
+            "The file picker above just remembers what you've selected in "
+            "this browser tab — it doesn't reflect what's actually in the "
+            "knowledge base. The list below is the real thing; use 🗑 there "
+            "to remove something for good."
+        )
         if not documents:
             st.caption("No documents uploaded yet.")
         for doc in documents:
@@ -198,38 +229,53 @@ for idx, message in enumerate(st.session_state.conversation.messages):
         if message.role == MessageRole.ASSISTANT:
             _render_play_button(message.content, key=f"play-history-{idx}")
 
-prompt = st.chat_input("Message the assistant...")
-
-if "processed_voice_inputs" not in st.session_state:
-    st.session_state.processed_voice_inputs = set()
-
-audio_value = st.audio_input("🎙️ Or record a voice message")
-if audio_value is not None and audio_value.file_id not in st.session_state.processed_voice_inputs:
-    st.session_state.processed_voice_inputs.add(audio_value.file_id)
-    with st.spinner("Transcribing..."):
-        prompt = _transcribe_audio(audio_value)
-
-if "processed_images" not in st.session_state:
-    st.session_state.processed_images = set()
-
-uploaded_image = st.file_uploader(
-    "🖼️ Or attach an image to ask about",
-    type=["png", "jpg", "jpeg", "webp"],
-    key="image_uploader",
+chat_value = st.chat_input(
+    "Message the assistant, attach an image, or record a voice message...",
+    accept_file=True,
+    file_type=["png", "jpg", "jpeg", "webp"],
+    accept_audio=True,
 )
+
+prompt = None
+uploaded_image = None
+
+if chat_value:
+    if chat_value.audio is not None:
+        try:
+            with st.spinner("Transcribing..."):
+                prompt = _transcribe_audio(chat_value.audio)
+        except httpx.HTTPStatusError as exc:
+            st.error(f"Couldn't transcribe that recording: {_error_detail(exc)}")
+        except httpx.ConnectError:
+            st.error("Can't reach the backend API.")
+    else:
+        prompt = chat_value.text
+    if chat_value.files:
+        uploaded_image = chat_value.files[0]
+        if not prompt:
+            prompt = "What do you see in this image?"
 
 if prompt:
     conversation: Conversation = st.session_state.conversation
+
+    # If the previous turn never got a reply (stopped mid-stream, or the
+    # backend call failed), its user message is still the last entry with
+    # nothing answering it. Sending two user turns in a row confuses the
+    # model into answering both at once (and answering neither well) — but
+    # the earlier question shouldn't just vanish either, so record an
+    # honest placeholder reply rather than deleting it.
+    if conversation.messages and conversation.messages[-1].role == MessageRole.USER:
+        conversation.add_message(
+            Message(role=MessageRole.ASSISTANT, content="*(interrupted — no response)*")
+        )
+
     conversation.add_message(Message(role=MessageRole.USER, content=prompt))
 
-    use_vision = (
-        uploaded_image is not None
-        and uploaded_image.file_id not in st.session_state.processed_images
-    )
-    if use_vision:
-        st.session_state.processed_images.add(uploaded_image.file_id)
+    use_vision = uploaded_image is not None
 
     with st.chat_message("user"):
+        if uploaded_image is not None:
+            st.image(uploaded_image, width=200)
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
@@ -237,6 +283,7 @@ if prompt:
         placeholder.markdown("Thinking...")
         full_reply = ""
         status_box = None
+        completed = False
         try:
             if use_vision:
                 for text in _ask_vision(conversation, uploaded_image, prompt):
@@ -257,17 +304,30 @@ if prompt:
             if status_box is not None:
                 status_box.update(label="Done", state="complete", expanded=False)
             placeholder.markdown(full_reply)
+            completed = True
         except httpx.ConnectError:
-            full_reply = ""
             placeholder.error(
                 "Can't reach the backend API. Start it with:\n\n"
                 "`uv run uvicorn src.api.main:app --reload`"
             )
+        except httpx.HTTPStatusError as exc:
+            placeholder.error(f"Request failed: {_error_detail(exc)}")
+        finally:
+            # Runs even when Streamlit's native Stop button interrupts the
+            # loop above (it works by raising an exception into this
+            # script), so whatever text had already streamed in is kept
+            # instead of vanishing — matching ChatGPT's "keep what it had"
+            # behavior on stop, instead of discarding it.
+            if full_reply:
+                stored_reply = full_reply if completed else f"{full_reply}\n\n*(interrupted)*"
+                conversation.add_message(Message(role=MessageRole.ASSISTANT, content=stored_reply))
 
-    if full_reply:
-        conversation.add_message(Message(role=MessageRole.ASSISTANT, content=full_reply))
+    if completed and full_reply:
         # Rerun so the history loop above renders this message (and its Play
         # button) as a normal, stable widget — a button created in this
         # branch would vanish next run (prompt/audio_value are now empty),
-        # so its own click could never be detected.
+        # so its own click could never be detected. Skipped when interrupted
+        # (completed=False) — the script is already being torn down by the
+        # Stop signal at that point, so forcing a rerun here would fight it;
+        # the next natural interaction will show the saved partial reply.
         st.rerun()

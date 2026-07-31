@@ -29,8 +29,12 @@ class Settings(BaseSettings):
     chroma_path: str = "./data/chroma"
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 150
-    rag_top_k: int = 4
-    rag_max_distance: float = 0.5
+    rag_top_k: int = 6
+    # nomic-embed-text cosine distances for genuinely relevant chunks in a
+    # real resume measured 0.42-0.53 against conversational questions
+    # (e.g. "how many years did she work") — a 0.5 cutoff was silently
+    # dropping real matches on most turns. 0.75 leaves headroom.
+    rag_max_distance: float = 0.75
 
     # Voice
     whisper_model_size: str = "base"

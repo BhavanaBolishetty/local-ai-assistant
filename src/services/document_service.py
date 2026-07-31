@@ -35,6 +35,13 @@ class DocumentService:
         if not chunks:
             raise ValueError("Document has no extractable text")
 
+        # Re-uploading a file with the same name replaces the old entry
+        # instead of leaving a confusing stale duplicate that RAG search
+        # would otherwise keep surfacing alongside the new version.
+        existing = [d for d in await self._vector_store.list_documents() if d.filename == filename]
+        for document in existing:
+            await self._vector_store.delete_document(document.id)
+
         embeddings = await self._ollama_client.embed(chunks)
         document_id = str(uuid4())
         await self._vector_store.add_document(document_id, filename, chunks, embeddings)
