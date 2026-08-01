@@ -1,10 +1,12 @@
 """FastAPI application entrypoint."""
 
+import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from src.api.routes.chat import router as chat_router
 from src.api.routes.conversations import router as conversations_router
@@ -17,6 +19,8 @@ from src.db.session import init_db
 from src.rag.vector_store import VectorStore
 from src.voice.synthesis import SynthesisService
 from src.voice.transcription import TranscriptionService
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -52,6 +56,17 @@ app.include_router(conversations_router)
 app.include_router(documents_router)
 app.include_router(voice_router)
 app.include_router(vision_router)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    logger.info(
+        "%s %s -> %d (%.0fms)", request.method, request.url.path, response.status_code, elapsed_ms
+    )
+    return response
 
 
 @app.get("/health")

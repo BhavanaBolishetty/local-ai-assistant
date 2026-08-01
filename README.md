@@ -8,14 +8,16 @@ Built incrementally as a learning project covering the full stack of a
 production-style AI application: layered backend architecture, RAG, tool use,
 agentic reasoning, voice, and vision.
 
-## Status: Phase 7 — Vision ✅
+## Status: Phase 8 — Deployment ✅
 
 Streamlit UI → FastAPI backend → Ollama → `qwen2.5:3b-instruct`, with
 streaming responses, SQLite-backed conversation history, document upload
 (ChromaDB + `nomic-embed-text`) for RAG, an agent (`src/agents/AgentRunner`)
 that can chain up to 8 tool calls per turn with a visible step trace,
-voice (Faster-Whisper speech-to-text, Piper text-to-speech), and vision
-— attach an image and ask about it (`moondream`), fully local.
+voice (Faster-Whisper speech-to-text, Piper text-to-speech), vision
+(attach an image and ask about it, via `moondream`) — all fully local —
+plus Docker Compose packaging, an integration test suite, and basic
+request logging.
 
 ## Architecture
 
@@ -69,12 +71,16 @@ local-ai-assistant/
 │   ├── db/                    # SQLAlchemy async engine/session + ORM models
 │   ├── memory/                 # (Later) context-window/summarization strategies
 │   ├── rag/                     # chunker, VectorStore (Chroma), RagRetriever
-│   ├── tools/                     # Tool (calculator, get_current_datetime, search_documents) + ToolRegistry
+│   ├── tools/                     # Tool (calculator, get_current_datetime, calculate_date_duration, search_documents) + ToolRegistry
 │   ├── agents/                   # AgentRunner — the bounded, multi-step tool-calling loop
 │   └── voice/                     # TranscriptionService (Faster-Whisper), SynthesisService (Piper)
-├── data/                    # Gitignored runtime data: uploads, chroma/, sqlite/, whisper/, voices/
+├── data/                    # Gitignored runtime data: uploads, chroma/, sqlite/, whisper/, voices/, logs/
 ├── tests/
+│   ├── unit/                 # Fast, no external services (Ollama/Chroma/etc. faked or skipped)
+│   └── integration/           # Real FastAPI app + real SQLite/Chroma, fake OllamaClient
 ├── .env.example
+├── Dockerfile
+├── docker-compose.yml
 └── pyproject.toml
 ```
 
@@ -116,6 +122,19 @@ uv run streamlit run apps/streamlit/app.py
 ```
 
 Open http://localhost:8501.
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+Brings up the backend (`:8000`) and Streamlit frontend (`:8501`) in
+containers — Ollama itself stays on the host (as it already does above);
+the backend reaches it via `host.docker.internal`, so pull your models
+there first, same as the non-Docker setup. `./data` is volume-mounted
+into both containers, so conversations/documents/models persist across
+rebuilds and are the same data your local (non-Docker) runs use.
 
 ## API reference
 
@@ -164,8 +183,9 @@ the documents, then computing something from what it found, then
 checking the date — with each step exposed in the trace. True token
 streaming is preserved for ordinary questions that need no tool at all.
 
-Voice is two independent, opt-in additions rather than a separate mode:
-a 🎙️ recorder below the chat box transcribes speech into the same
+Voice and image attachment are opt-in additions to the same chat input
+bar (`st.chat_input(accept_audio=True, accept_file=True)`) rather than a
+separate mode: recording a voice message transcribes it into the same
 `prompt` a typed message would produce (so it flows through the exact
 same send/RAG/agent pipeline above), and every assistant reply gets a
 "🔊 Play" button that synthesizes and plays *that* message on demand —
@@ -180,6 +200,26 @@ follow-up questions in the same conversation go straight back through
 the normal chat pipeline above, exactly as if no image had ever been
 attached.
 
+## Testing
+
+```bash
+uv run pytest
+```
+
+Runs both suites — `tests/unit/` (pure logic, individual components,
+none of them touch a real external service) and `tests/integration/`
+(the real FastAPI app end-to-end through every route, with a fake
+`OllamaClient`/voice services standing in for Ollama/Whisper/Piper —
+see `tests/integration/conftest.py`). Neither suite needs Ollama running
+or any model pulled; both run in a few seconds.
+
+## Logging
+
+Console logging is always on (`LOG_LEVEL`, default `INFO`). Set
+`LOG_FILE` (e.g. `./data/logs/app.log`) to also write a rotating log
+file (5MB × 3 backups). Every request is logged with method, path,
+status code, and duration.
+
 ## Roadmap
 
 - [x] Phase 1 — Core chat loop (Streamlit + FastAPI + Ollama)
@@ -189,4 +229,4 @@ attached.
 - [x] Phase 5 — Agent (planning, multi-step reasoning)
 - [x] Phase 6 — Voice (Faster-Whisper, Piper)
 - [x] Phase 7 — Vision
-- [ ] Phase 8 — Deployment (Docker, logging, testing)
+- [x] Phase 8 — Deployment (Docker, logging, testing)

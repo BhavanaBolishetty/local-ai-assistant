@@ -48,6 +48,10 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    # Console logging is always on; set this to also write a rotating log
+    # file (e.g. "./data/logs/app.log") — off by default, matching the
+    # "logs go to stdout" convention Docker/most process managers expect.
+    log_file: str | None = None
 
 
 @lru_cache

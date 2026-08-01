@@ -21,6 +21,8 @@ data/whisper/*
 !data/whisper/.gitkeep
 data/voices/*
 !data/voices/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
 
 # IDE
 .vscode/
@@ -30,6 +32,6 @@ data/voices/*
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs (anchored to repo root — data/logs/ is handled above, tracked via .gitkeep)
 *.log
-logs/
+/logs/
