@@ -31,7 +31,7 @@ def get_vision_service(
     return VisionService(ollama_client, repository, settings.ollama_vision_model)
 
 
-@router.post("/ask")
+@router.post("/ask", summary="Ask a question about an attached image (moondream)")
 async def ask_about_image(
     image: UploadFile,
     text: str = Form(...),

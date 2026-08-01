@@ -66,7 +66,11 @@ def _to_domain_messages(request: ChatRequest) -> list[Message]:
     return [Message(role=MessageRole(m.role), content=m.content) for m in request.messages]
 
 
-@router.post("", response_model=ChatResponse)
+@router.post(
+    "",
+    response_model=ChatResponse,
+    summary="Send a chat message, get one complete reply",
+)
 async def send_chat_message(
     request: ChatRequest,
     chat_service: ChatService = Depends(get_chat_service),
@@ -107,7 +111,7 @@ async def _to_ndjson(events: AsyncIterator[ChatStreamEvent]) -> AsyncIterator[st
         yield json.dumps(payload) + "\n"
 
 
-@router.post("/stream")
+@router.post("/stream", summary="Send a chat message, stream the reply as NDJSON events")
 async def stream_chat_message(
     request: ChatRequest,
     chat_service: ChatService = Depends(get_chat_service),

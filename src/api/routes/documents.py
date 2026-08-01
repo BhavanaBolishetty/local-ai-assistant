@@ -41,7 +41,12 @@ def _to_document_out(summary) -> DocumentOut:
     )
 
 
-@router.post("", response_model=DocumentOut, status_code=201)
+@router.post(
+    "",
+    response_model=DocumentOut,
+    status_code=201,
+    summary="Upload a document (.txt/.md/.pdf/.docx) to the RAG knowledge base",
+)
 async def upload_document(
     file: UploadFile,
     document_service: DocumentService = Depends(get_document_service),
@@ -61,7 +66,7 @@ async def upload_document(
     return _to_document_out(summary)
 
 
-@router.get("", response_model=list[DocumentOut])
+@router.get("", response_model=list[DocumentOut], summary="List uploaded documents")
 async def list_documents(
     document_service: DocumentService = Depends(get_document_service),
 ) -> list[DocumentOut]:
@@ -69,7 +74,7 @@ async def list_documents(
     return [_to_document_out(s) for s in summaries]
 
 
-@router.delete("/{document_id}", status_code=204)
+@router.delete("/{document_id}", status_code=204, summary="Delete a document and its chunks")
 async def delete_document(
     document_id: str,
     document_service: DocumentService = Depends(get_document_service),

@@ -5,6 +5,7 @@ description = "A local, tool-using AI assistant powered by a small language mode
 authors = [
     { name = "BhavanaBolishetty", email = "bhavanabolishetty3@gmail.com" }
 ]
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "aiosqlite>=0.20.0",

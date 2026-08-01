@@ -50,7 +50,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.http_client.aclose()
 
 
-app = FastAPI(title="Local AI Assistant API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Local AI Assistant API",
+    description=(
+        "A fully local, tool-using AI assistant backend — chat with RAG and "
+        "agentic tool-calling, conversation history, document upload, voice "
+        "(speech-to-text/text-to-speech), and vision. See "
+        "[docs/API.md](https://github.com/BhavanaBolishetty/local-ai-assistant/"
+        "blob/main/docs/API.md) for example requests."
+    ),
+    version="0.1.0",
+    lifespan=lifespan,
+)
 app.include_router(chat_router)
 app.include_router(conversations_router)
 app.include_router(documents_router)

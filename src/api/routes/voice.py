@@ -25,7 +25,11 @@ def get_synthesis_service(request: Request) -> SynthesisService:
     return request.app.state.synthesis_service
 
 
-@router.post("/transcribe", response_model=TranscriptionOut)
+@router.post(
+    "/transcribe",
+    response_model=TranscriptionOut,
+    summary="Transcribe an audio file to text (Faster-Whisper)",
+)
 async def transcribe_audio(
     file: UploadFile,
     transcription_service: TranscriptionService = Depends(get_transcription_service),
@@ -35,7 +39,7 @@ async def transcribe_audio(
     return TranscriptionOut(text=text)
 
 
-@router.post("/speak")
+@router.post("/speak", summary="Synthesize text to speech (Piper), returns WAV bytes")
 async def speak_text(
     speak_request: SpeakRequest,
     synthesis_service: SynthesisService = Depends(get_synthesis_service),

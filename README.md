@@ -1,5 +1,11 @@
 # Local AI Assistant
 
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+[![CI](https://github.com/BhavanaBolishetty/local-ai-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/BhavanaBolishetty/local-ai-assistant/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A ChatGPT-style assistant that runs entirely on your own machine using a small
 language model served by [Ollama](https://ollama.com) — no API keys, no cloud
 calls, no data leaving your computer.
@@ -19,37 +25,59 @@ voice (Faster-Whisper speech-to-text, Piper text-to-speech), vision
 plus Docker Compose packaging, an integration test suite, and basic
 request logging.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Chat view](docs/images/01-empty-chat.png) | ![Uploading a document](docs/images/02-upload-documents.png) |
+| Unified ChatGPT-style input — text, image, and voice in one bar | Drag-and-drop documents into the RAG knowledge base |
+| ![Live agent step trace](docs/images/03-agent-step-trace.png) | ![Final answer](docs/images/04-final-answer.png) |
+| Live trace of each tool call the agent makes before answering | The completed reply, with a Play button for text-to-speech |
+| ![Chat history](docs/images/05-chat-history.png) | |
+| Past conversations persist across restarts and can be reopened or deleted | |
+
 ## Architecture
 
-```
-┌─────────────────────┐       HTTP        ┌──────────────────────┐
-│  apps/streamlit      │  ───────────────▶ │   src/api (FastAPI)   │
-│  (chat UI)            │  ◀─────────────── │   routes/chat.py       │
-└─────────────────────┘   streamed text    └──────────┬───────────┘
-                                                        │ Depends()
-                                                        ▼
-                                            ┌──────────────────────┐
-                                            │  src/services          │
-                                            │  ChatService            │
-                                            │  (injects system prompt)│
-                                            └──────────┬───────────┘
-                                                        │
-                                                        ▼
-                                            ┌──────────────────────┐
-                                            │  src/ai                │
-                                            │  OllamaClient           │
-                                            │  (only module that      │
-                                            │  knows Ollama's format) │
-                                            └──────────┬───────────┘
-                                                        │ HTTP (localhost:11434)
-                                                        ▼
-                                            ┌──────────────────────┐
-                                            │  Ollama                 │
-                                            │  qwen2.5:3b-instruct     │
-                                            │  (llama.cpp, Q4_K_M)     │
-                                            └──────────────────────┘
+```mermaid
+flowchart LR
+    User(("👤 User"))
+
+    subgraph Frontend["apps/streamlit"]
+        UI["Streamlit UI"]
+    end
+
+    subgraph Backend["FastAPI backend (src/api)"]
+        Routes["Routes<br/>chat · conversations · documents · voice · vision"]
+        Services["Services<br/>ChatService · DocumentService · VisionService"]
+        Agent["AgentRunner<br/>+ tools (calculator, dates, doc search)"]
+        RAG["RagRetriever"]
+    end
+
+    subgraph Models["Local models"]
+        Ollama["Ollama<br/>qwen2.5 · nomic-embed-text · moondream"]
+        Whisper["Faster-Whisper (STT)"]
+        Piper["Piper (TTS)"]
+    end
+
+    subgraph Storage["Persistence"]
+        SQLite[("SQLite<br/>conversations")]
+        Chroma[("ChromaDB<br/>document chunks")]
+    end
+
+    User <--> UI
+    UI <-- "HTTP (streamed)" --> Routes
+    Routes --> Services
+    Services --> Agent
+    Services --> RAG
+    Services --> SQLite
+    RAG --> Chroma
+    Services --> Ollama
+    Routes --> Whisper
+    Routes --> Piper
 ```
 
+`OllamaClient` (`src/ai/`) is the only module that knows Ollama's wire
+format; `VectorStore` (`src/rag/`) is the only one that knows Chroma's.
 Domain objects (`src/models/`) flow between layers; each layer only imports
 the one directly below it. `src/api/schemas/` is a separate, deliberately
 thin layer that exists only to validate/serialize HTTP traffic.
@@ -137,6 +165,10 @@ into both containers, so conversations/documents/models persist across
 rebuilds and are the same data your local (non-Docker) runs use.
 
 ## API reference
+
+Full reference with example `curl` requests/responses for every
+endpoint: [docs/API.md](docs/API.md). Interactive Swagger UI is also
+auto-generated at `/docs` once the backend is running.
 
 | Method | Path                       | Description                              |
 |--------|----------------------------|--------------------------------------------|

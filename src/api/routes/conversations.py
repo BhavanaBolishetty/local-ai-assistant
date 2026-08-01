@@ -20,7 +20,7 @@ def get_conversation_repository(
     return ConversationRepository(db_session)
 
 
-@router.get("", response_model=list[ConversationSummaryOut])
+@router.get("", response_model=list[ConversationSummaryOut], summary="List past conversations")
 async def list_conversations(
     repository: ConversationRepository = Depends(get_conversation_repository),
 ) -> list[ConversationSummaryOut]:
@@ -30,7 +30,11 @@ async def list_conversations(
     ]
 
 
-@router.get("/{conversation_id}", response_model=ConversationOut)
+@router.get(
+    "/{conversation_id}",
+    response_model=ConversationOut,
+    summary="Load one conversation with its full message history",
+)
 async def get_conversation(
     conversation_id: str,
     repository: ConversationRepository = Depends(get_conversation_repository),
@@ -48,7 +52,7 @@ async def get_conversation(
     )
 
 
-@router.delete("/{conversation_id}", status_code=204)
+@router.delete("/{conversation_id}", status_code=204, summary="Delete a conversation")
 async def delete_conversation(
     conversation_id: str,
     repository: ConversationRepository = Depends(get_conversation_repository),
